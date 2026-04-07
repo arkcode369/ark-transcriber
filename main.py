@@ -24,6 +24,8 @@ import gdown
 from diagram_generator import DiagramGenerator
 # Import PDF processor
 from pdf_processor import PDFProcessor
+# Import ark-intelligent saver
+from save_to_ark_intelligent import save_youtube_transcript, save_pdf_transcript
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -502,6 +504,24 @@ async def transcribe_youtube_video(request: TranscriptRequest) -> TranscriptResp
                 logger.error(f"Diagram generation failed: {str(e)}")
                 diagrams = {"error": f"Diagram generation failed: {str(e)}"}
         
+        # Save to ark-intelligent docs
+        if summary:
+            try:
+                logger.info("Saving to ark-intelligent docs...")
+                saved_path = save_youtube_transcript(
+                    video_id=video_id,
+                    title=f"Video {video_id}",
+                    transcript_text=full_text,
+                    summary=summary,
+                    diagrams=diagrams,
+                    language=request.summary_language,
+                    duration_seconds=duration_seconds,
+                    source_url=request.url
+                )
+                logger.info(f"Saved to: {saved_path}")
+            except Exception as e:
+                logger.error(f"Failed to save to ark-intelligent: {str(e)}")
+        
         return TranscriptResponse(
             source_type="youtube",
             video_id=video_id,
@@ -729,6 +749,27 @@ async def process_pdf(request: PDFRequest):
             except Exception as e:
                 logger.error(f"Diagram generation failed: {str(e)}")
                 diagrams = {"error": f"Diagram generation failed: {str(e)}"}
+        
+        # Save to ark-intelligent docs
+        if summary:
+            try:
+                logger.info("Saving to ark-intelligent docs...")
+                saved_path = save_pdf_transcript(
+                    filename=pdf_result["filename"],
+                    full_text=pdf_result["full_text"],
+                    summary=summary,
+                    diagrams=diagrams,
+                    language=request.summary_language,
+                    total_pages=pdf_result["total_pages"],
+                    text_pages=pdf_result["text_pages"],
+                    image_pages=pdf_result["image_pages"],
+                    ocr_used=pdf_result["ocr_used"],
+                    ocr_pages=pdf_result["ocr_pages"],
+                    source_url=request.url
+                )
+                logger.info(f"Saved to: {saved_path}")
+            except Exception as e:
+                logger.error(f"Failed to save to ark-intelligent: {str(e)}")
         
         # Cleanup temp file
         import os
