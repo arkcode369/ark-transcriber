@@ -22,6 +22,8 @@ import gdown
 
 # Import diagram generator
 from diagram_generator import DiagramGenerator
+# Import PDF processor
+from pdf_processor import PDFProcessor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -52,6 +54,9 @@ diagram_generator = DiagramGenerator(
     litellm_api_key=LITELLM_API_KEY,
     model=SUMMARY_MODEL
 )
+
+# Initialize PDF processor
+pdf_processor = PDFProcessor(workspace_dir=WORKSPACE_DIR)
 
 
 class TranscriptRequest(BaseModel):
@@ -90,6 +95,27 @@ class SummaryRequest(BaseModel):
     video_id: str
     transcript_text: str
     language: str = "id"
+
+
+class PDFRequest(BaseModel):
+    url: Optional[str] = None  # GDrive URL or direct link
+    generate_summary: bool = True
+    summary_language: str = "id"
+    generate_diagrams: bool = True
+    use_ocr: bool = True  # Enable OCR for image-based PDFs
+
+
+class PDFResponse(BaseModel):
+    filename: str
+    total_pages: int
+    text_pages: int
+    image_pages: int
+    hybrid: bool
+    full_text: str
+    summary: Optional[str] = None
+    diagrams: Optional[Dict[str, Any]] = None
+    ocr_used: bool = False
+    ocr_pages: int = 0
 
 
 # ==================== YouTube Functions ====================
@@ -644,8 +670,165 @@ async def health_check():
         "transcript_api": "available",
         "summary_model": SUMMARY_MODEL,
         "cache_size": len(transcript_cache),
-        "workspace_dir": WORKSPACE_DIR
+        "workspace_dir": WORKSPACE_DIR,
+        "ocr_available": pdf_processor.ocr_available if 'pdf_processor' in locals() else False
     }
+
+
+@app.post("/process-pdf", response_model=PDFResponse)
+async def process_pdf(request: PDFRequest):
+    """
+    Process PDF file - extract text, perform OCR if needed, generate summary and diagrams.
+    Supports text-based PDFs, image-based PDFs (scanned), and hybrid PDFs.
+    """
+    if not request.url:
+        raise HTTPException(status_code=400, detail="PDF URL is required")
+    
+    # Check if OCR is available for image-based PDFs
+    if not pdf_processor.ocr_available and request.use_ocr:
+        logger.warning("OCR not available, processing text pages only")
+        request.use_ocr = False
+    
+    try:
+        # Download PDF from URL (GDrive or direct link)
+        logger.info(f"Downloading PDF from: {request.url}")
+        
+        import gdown
+        import tempfile
+        
+        # Create temp file
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_file:
+            temp_pdf_path = tmp_file.name
+        
+        # Download PDF
+        try:
+            gdown.download(request.url, temp_pdf_path, quiet=False)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to download PDF: {str(e)}")
+        
+        # Process PDF
+        logger.info("Processing PDF...")
+        pdf_result = pdf_processor.process_pdf(temp_pdf_path, use_ocr=request.use_ocr)
+        
+        # Generate summary if requested
+        summary = None
+        if request.generate_summary and pdf_result["full_text"]:
+            logger.info("Generating summary...")
+            summary = await generate_summary(pdf_result["full_text"], request.summary_language)
+        
+        # Generate diagrams if requested
+        diagrams = None
+        if request.generate_diagrams and pdf_result["full_text"]:
+            try:
+                logger.info("Generating diagrams...")
+                diagram_result = await diagram_generator.generate_all_diagrams(
+                    pdf_result["full_text"],
+                    pdf_result["filename"]
+                )
+                diagrams = diagram_result
+            except Exception as e:
+                logger.error(f"Diagram generation failed: {str(e)}")
+                diagrams = {"error": f"Diagram generation failed: {str(e)}"}
+        
+        # Cleanup temp file
+        import os
+        if os.path.exists(temp_pdf_path):
+            os.unlink(temp_pdf_path)
+        
+        return PDFResponse(
+            filename=pdf_result["filename"],
+            total_pages=pdf_result["total_pages"],
+            text_pages=pdf_result["text_pages"],
+            image_pages=pdf_result["image_pages"],
+            hybrid=pdf_result["hybrid"],
+            full_text=pdf_result["full_text"],
+            summary=summary,
+            diagrams=diagrams,
+            ocr_used=pdf_result["ocr_used"],
+            ocr_pages=pdf_result["ocr_pages"]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"PDF processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"PDF processing failed: {str(e)}")
+
+
+@app.post("/process-pdf-upload")
+async def process_pdf_upload(
+    file: UploadFile = File(...),
+    generate_summary: bool = True,
+    summary_language: str = "id",
+    generate_diagrams: bool = True,
+    use_ocr: bool = True
+):
+    """
+    Upload and process PDF file directly.
+    """
+    if not file.content_type or "pdf" not in file.content_type:
+        raise HTTPException(status_code=400, detail="File must be a PDF")
+    
+    # Check if OCR is available
+    if not pdf_processor.ocr_available and use_ocr:
+        logger.warning("OCR not available, processing text pages only")
+        use_ocr = False
+    
+    try:
+        # Save uploaded file
+        import tempfile
+        import os
+        
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_file:
+            content = await file.read()
+            tmp_file.write(content)
+            temp_pdf_path = tmp_file.name
+        
+        logger.info(f"Processing uploaded PDF: {file.filename}")
+        
+        # Process PDF
+        pdf_result = pdf_processor.process_pdf(temp_pdf_path, use_ocr=use_ocr)
+        
+        # Generate summary
+        summary = None
+        if generate_summary and pdf_result["full_text"]:
+            logger.info("Generating summary...")
+            summary = await generate_summary(pdf_result["full_text"], summary_language)
+        
+        # Generate diagrams
+        diagrams = None
+        if generate_diagrams and pdf_result["full_text"]:
+            try:
+                logger.info("Generating diagrams...")
+                diagram_result = await diagram_generator.generate_all_diagrams(
+                    pdf_result["full_text"],
+                    pdf_result["filename"]
+                )
+                diagrams = diagram_result
+            except Exception as e:
+                logger.error(f"Diagram generation failed: {str(e)}")
+                diagrams = {"error": f"Diagram generation failed: {str(e)}"}
+        
+        # Cleanup
+        if os.path.exists(temp_pdf_path):
+            os.unlink(temp_pdf_path)
+        
+        return {
+            "filename": pdf_result["filename"],
+            "total_pages": pdf_result["total_pages"],
+            "text_pages": pdf_result["text_pages"],
+            "image_pages": pdf_result["image_pages"],
+            "hybrid": pdf_result["hybrid"],
+            "full_text": pdf_result["full_text"],
+            "summary": summary,
+            "diagrams": diagrams,
+            "ocr_used": pdf_result["ocr_used"],
+            "ocr_pages": pdf_result["ocr_pages"]
+        }
+        
+    except Exception as e:
+        logger.error(f"PDF upload processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"PDF processing failed: {str(e)}")
 
 
 if __name__ == "__main__":

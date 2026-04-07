@@ -1,6 +1,6 @@
-# YouTube & Google Drive Transcript Service
+# YouTube & Google Drive & PDF Transcript Service
 
-Extract transcripts from YouTube videos, playlists, and Google Drive videos. Generate AI-powered summaries using Claude Opus 4.6.
+Extract transcripts from YouTube videos, playlists, Google Drive videos, and PDFs. Generate AI-powered summaries and Mermaid.js diagrams using Claude Opus 4.6.
 
 ## Features
 
@@ -8,7 +8,9 @@ Extract transcripts from YouTube videos, playlists, and Google Drive videos. Gen
 - ✅ **YouTube playlist** - Extract all videos, individual + combined summary
 - ✅ **Google Drive single video** - Download, extract audio, transcribe with ASR
 - ✅ **Google Drive folder** - Process multiple videos (requires GDrive API)
+- ✅ **PDF files** - Text extraction, OCR for scanned PDFs, hybrid support
 - ✅ **Multi-language support** - Summaries in any language
+- ✅ **Mermaid.js diagrams** - Flowchart, mindmap, timeline, sequence
 - ✅ **RESTful API** - FastAPI with OpenAPI docs
 - ✅ **Docker-ready** - Easy deployment
 - ✅ **Integrated with LiteLLM** - Model routing for Opus 4.6
@@ -62,6 +64,25 @@ curl -X POST "http://localhost:8000/transcribe" \
     "generate_summary": true,
     "summary_language": "id"
   }'
+
+# PDF from URL (GDrive or direct link)
+curl -X POST "http://localhost:8000/process-pdf" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://drive.google.com/file/d/PDF_ID/view",
+    "generate_summary": true,
+    "summary_language": "id",
+    "generate_diagrams": true,
+    "use_ocr": true
+  }'
+
+# Upload PDF file directly
+curl -X POST "http://localhost:8000/process-pdf-upload" \
+  -F "file=@/path/to/trading-notes.pdf" \
+  -F "generate_summary=true" \
+  -F "summary_language=id" \
+  -F "generate_diagrams=true" \
+  -F "use_ocr=true"
 ```
 
 ## API Endpoints
@@ -126,6 +147,26 @@ Extract transcript and optionally generate summary from YouTube or Google Drive.
 }
 ```
 
+**Response (PDF from URL or upload):**
+```json
+{
+  "filename": "trading-notes.pdf",
+  "total_pages": 50,
+  "text_pages": 30,
+  "image_pages": 20,
+  "hybrid": true,
+  "full_text": "Full extracted text from all pages...",
+  "summary": "Comprehensive summary of trading concepts...",
+  "diagrams": {
+    "flowchart": "graph TD...",
+    "mindmap": "mindmap...",
+    "recommended": "flowchart"
+  },
+  "ocr_used": true,
+  "ocr_pages": 20
+}
+```
+
 ### POST `/summary-only`
 Generate summary from existing transcript text.
 
@@ -143,6 +184,32 @@ Health check endpoint.
 - Single video: `https://drive.google.com/file/d/FILE_ID/view`
 - Single video: `https://drive.google.com/open?id=FILE_ID`
 - Folder: `https://drive.google.com/folders/FOLDER_ID` (requires GDrive API)
+
+### PDF
+- From GDrive: `https://drive.google.com/file/d/PDF_ID/view`
+- Direct link: `https://example.com/document.pdf`
+- Upload: Direct file upload via multipart form
+
+## PDF Processing Details
+
+| PDF Type | Processing Method | Notes |
+|----------|-------------------|-------|
+| **Text-based** | Direct extraction | Fast, accurate |
+| **Image-based (scanned)** | OCR (Tesseract) | Requires `tesseract-ocr` installed |
+| **Hybrid** | Both methods | Text pages + OCR for image pages |
+
+**OCR Requirements:**
+- Install Tesseract: `sudo apt-get install tesseract-ocr` (Ubuntu/Debian)
+- Language packs: `sudo apt-get install tesseract-lang`
+- PDF rendering: `sudo apt-get install poppler-utils` (for pdf2image)
+
+**PDF Features:**
+- ✅ Extract text from text-based PDFs
+- ✅ OCR for scanned/image-based PDFs
+- ✅ Handle hybrid PDFs (mix of text and images)
+- ✅ Extract tables from PDF pages
+- ✅ Generate summaries and diagrams from PDF content
+- ✅ Support for multi-page documents
 
 ## Configuration
 
