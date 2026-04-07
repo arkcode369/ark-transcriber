@@ -25,7 +25,7 @@ ark-intelligent/.agents/docs/
 ├── TRANSCRIPTS_INDEX.md          # Index and search guide
 └── transcripts/
     ├── youtube/
-    │   ├── {video_id}/
+    │   ├── {video_id}/           # Single video
     │   │   ├── metadata.json     # Structured metadata
     │   │   ├── transcript.md     # Full transcript
     │   │   ├── summary.md        # AI summary + key points
@@ -33,11 +33,16 @@ ark-intelligent/.agents/docs/
     │   │       ├── flowchart.md
     │   │       ├── mindmap.md
     │   │       └── timeline.md
-    │   └── {playlist_id}/
+    │   └── {playlist_id}/        # Playlist (multiple videos)
     │       ├── metadata.json
-    │       ├── combined_summary.md
+    │       ├── combined_summary.md   # Overall playlist summary
+    │       ├── transcript.md         # All videos combined
+    │       ├── diagrams/
     │       └── videos/
-    │           └── {video_id}/
+    │           └── {video_id}/   # Individual video
+    │               ├── metadata.json
+    │               ├── transcript.md
+    │               └── summary.md
     └── pdf/
         └── {filename_slug}/
             ├── metadata.json
@@ -147,6 +152,36 @@ User: https://youtu.be/ABC123
   - summary.md
   - diagrams/flowchart.md
   - diagrams/mindmap.md
+```
+
+### Example 2: YouTube Playlist
+```
+User: https://youtube.com/playlist?list=PLxyz123
+
+→ Processed by ark-transcriber
+→ Saved to: ark-intelligent/.agents/docs/transcripts/youtube/PLxyz123/
+→ Files created:
+  
+  # Playlist level
+  - metadata.json (playlist info, all video IDs)
+  - combined_summary.md (summary of ALL videos together)
+  - transcript.md (all videos combined)
+  - diagrams/ (playlist-level diagrams)
+  
+  # Individual videos
+  - videos/
+    ├── video1/
+    │   ├── metadata.json
+    │   ├── transcript.md
+    │   └── summary.md
+    ├── video2/
+    │   ├── metadata.json
+    │   ├── transcript.md
+    │   └── summary.md
+    └── video3/
+        ├── metadata.json
+        ├── transcript.md
+        └── summary.md
 ```
 
 ### Example 2: PDF Document

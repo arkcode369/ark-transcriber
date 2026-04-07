@@ -25,7 +25,7 @@ from diagram_generator import DiagramGenerator
 # Import PDF processor
 from pdf_processor import PDFProcessor
 # Import ark-intelligent saver
-from save_to_ark_intelligent import save_youtube_transcript, save_pdf_transcript
+from save_to_ark_intelligent import save_youtube_transcript, save_pdf_transcript, save_youtube_playlist
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -597,6 +597,36 @@ async def transcribe_youtube_playlist(request: TranscriptRequest) -> TranscriptR
         combined_summary = None
         if request.generate_summary and request.combine_playlist_summary and individual_summaries:
             combined_summary = await generate_combined_summary(individual_summaries, request.summary_language)
+        
+        # Save to ark-intelligent docs
+        if combined_summary:
+            try:
+                logger.info("Saving playlist to ark-intelligent docs...")
+                
+                # Prepare videos data
+                videos_data = []
+                for vr in video_results:
+                    videos_data.append({
+                        "video_id": vr.video_id,
+                        "title": f"Video {vr.video_id}",
+                        "full_text": vr.full_text,
+                        "summary": vr.summary,
+                        "duration_seconds": vr.duration_seconds,
+                        "source_url": request.url
+                    })
+                
+                saved_path = save_youtube_playlist(
+                    playlist_id=playlist_id,
+                    title=f"Playlist: {playlist_id}",
+                    videos=videos_data,
+                    combined_summary=combined_summary,
+                    language=request.summary_language,
+                    total_duration=sum(v.duration_seconds for v in video_results),
+                    source_url=request.url
+                )
+                logger.info(f"Saved playlist to: {saved_path}")
+            except Exception as e:
+                logger.error(f"Failed to save playlist to ark-intelligent: {str(e)}")
         
         return TranscriptResponse(
             source_type="youtube_playlist",

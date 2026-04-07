@@ -30,6 +30,227 @@ def slugify(text: str) -> str:
     return text[:50]  # Limit length
 
 
+def save_youtube_playlist(
+    playlist_id: str,
+    title: str,
+    videos: list,
+    combined_summary: str,
+    language: str = "id",
+    total_duration: int = 0,
+    source_url: str = ""
+) -> Path:
+    """Save YouTube playlist to ark-intelligent docs"""
+    
+    # Create directory structure
+    playlist_dir = TRANSCRIPTS_DIR / "youtube" / playlist_id
+    playlist_dir.mkdir(parents=True, exist_ok=True)
+    
+    videos_dir = playlist_dir / "videos"
+    videos_dir.mkdir(parents=True, exist_ok=True)
+    
+    diagrams_dir = playlist_dir / "diagrams"
+    diagrams_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate metadata
+    now = datetime.utcnow()
+    metadata = {
+        "source_type": "youtube_playlist",
+        "source_id": playlist_id,
+        "title": title,
+        "created_at": now.isoformat() + "Z",
+        "language": language,
+        "total_videos": len(videos),
+        "total_duration_seconds": total_duration,
+        "source_url": source_url,
+        "video_ids": [v.get("video_id") for v in videos],
+        "tags": extract_tags_from_summary(combined_summary),
+        "processing_notes": f"Playlist with {len(videos)} videos"
+    }
+    
+    # Save metadata.json
+    with open(playlist_dir / "metadata.json", "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2, ensure_ascii=False)
+    
+    # Save combined_summary.md
+    combined_content = f"""# {title} - Combined Summary
+
+**Source:** YouTube Playlist - {playlist_id}  
+**Created:** {now.strftime('%Y-%m-%d %H:%M UTC')}  
+**Language:** {language}  
+**Total Videos:** {len(videos)}  
+**Total Duration:** {total_duration} seconds
+
+---
+
+## Executive Summary
+
+{combined_summary}
+
+---
+
+## Key Points
+
+{generate_key_points(combined_summary)}
+
+---
+
+## Actionable Insights
+
+{generate_actionable_insights(combined_summary)}
+
+---
+
+## Tags
+
+{', '.join(metadata['tags'])}
+
+---
+
+## Individual Videos
+
+{chr(10).join([f"- [Video {i+1}: {v.get('title', v.get('video_id'))}](./videos/{v.get('video_id')}/summary.md)" for i, v in enumerate(videos)])}
+
+---
+
+## Related Content
+
+- [Full Combined Transcript](./transcript.md)
+- [Diagrams](./diagrams/)
+
+---
+
+**Metadata:**
+- Source URL: {source_url}
+- Processed At: {now.isoformat()}Z
+- Total Videos: {len(videos)}
+- Total Duration: {total_duration} seconds
+"""
+    
+    with open(playlist_dir / "combined_summary.md", "w", encoding="utf-8") as f:
+        f.write(combined_content)
+    
+    # Save full transcript
+    transcript_content = f"""# {title} - Full Combined Transcript
+
+**Source:** YouTube Playlist - {playlist_id}  
+**Created:** {now.strftime('%Y-%m-%d %H:%M UTC')}  
+**Language:** {language}
+
+---
+
+## All Videos Transcript
+
+{chr(10).join([f"\n\n=== Video {i+1}: {v.get('video_id')} ===\n{v.get('full_text', '')}" for i, v in enumerate(videos)])}
+
+---
+
+## Metadata
+- **Source URL:** {source_url}
+- **Processed At:** {now.isoformat()}Z
+- **Total Videos:** {len(videos)}
+- **Total Duration:** {total_duration} seconds
+"""
+    
+    with open(playlist_dir / "transcript.md", "w", encoding="utf-8") as f:
+        f.write(transcript_content)
+    
+    # Save individual video summaries
+    for video in videos:
+        video_id = video.get("video_id")
+        if video_id:
+            video_dir = videos_dir / video_id
+            video_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save individual metadata
+            video_metadata = {
+                "source_type": "youtube",
+                "source_id": video_id,
+                "playlist_id": playlist_id,
+                "title": video.get("title", f"Video {video_id}"),
+                "created_at": now.isoformat() + "Z",
+                "language": language,
+                "duration_seconds": video.get("duration_seconds", 0),
+                "tags": extract_tags_from_summary(video.get("summary", ""))
+            }
+            
+            with open(video_dir / "metadata.json", "w", encoding="utf-8") as f:
+                json.dump(video_metadata, f, indent=2, ensure_ascii=False)
+            
+            # Save individual transcript
+            transcript_file = video_dir / "transcript.md"
+            with open(transcript_file, "w", encoding="utf-8") as f:
+                f.write(f"""# {video.get('title', video_id)}
+
+**Source:** YouTube - {video_id}  
+**Playlist:** {playlist_id}  
+**Created:** {now.strftime('%Y-%m-%d %H:%M UTC')}  
+**Language:** {language}  
+**Duration:** {video.get('duration_seconds', 0)} seconds
+
+---
+
+## Full Transcript
+
+{video.get('full_text', '')}
+
+---
+
+## Metadata
+- **Source URL:** {video.get('source_url', '')}
+- **Processed At:** {now.isoformat()}Z
+""")
+            
+            # Save individual summary
+            summary_file = video_dir / "summary.md"
+            with open(summary_file, "w", encoding="utf-8") as f:
+                f.write(f"""# {video.get('title', video_id)} - Summary
+
+**Source:** YouTube - {video_id}  
+**Playlist:** {playlist_id}  
+**Created:** {now.strftime('%Y-%m-%d %H:%M UTC')}  
+**Language:** {language}
+
+---
+
+## Executive Summary
+
+{video.get('summary', 'No summary available')}
+
+---
+
+## Key Points
+
+{generate_key_points(video.get('summary', ''))}
+
+---
+
+## Actionable Insights
+
+{generate_actionable_insights(video.get('summary', ''))}
+
+---
+
+## Tags
+
+{', '.join(video_metadata['tags'])}
+
+---
+
+## Related Content
+
+- [Full Transcript](./transcript.md)
+
+---
+
+**Metadata:**
+- Source URL: {video.get('source_url', '')}
+- Processed At: {now.isoformat()}Z
+""")
+    
+    logger.info(f"Saved YouTube playlist to: {playlist_dir}")
+    return playlist_dir
+
+
 def save_youtube_transcript(
     video_id: str,
     title: str,
@@ -38,11 +259,17 @@ def save_youtube_transcript(
     diagrams: Dict[str, Any],
     language: str = "id",
     duration_seconds: int = 0,
-    source_url: str = ""
+    source_url: str = "",
+    playlist_id: Optional[str] = None
 ) -> Path:
     """Save YouTube transcript to ark-intelligent docs"""
     
-    # Create directory structure
+    # If part of playlist, save to playlist directory
+    if playlist_id:
+        # This will be handled by save_youtube_playlist
+        return TRANSCRIPTS_DIR / "youtube" / playlist_id / "videos" / video_id
+    
+    # Create directory structure for standalone video
     video_dir = TRANSCRIPTS_DIR / "youtube" / video_id
     video_dir.mkdir(parents=True, exist_ok=True)
     
