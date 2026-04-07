@@ -15,10 +15,10 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from pydantic import BaseModel
 from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
-from youtube_transcript_api._errors import YouTubeTranscriptApiError
 import httpx
 import logging
 import gdown
+from bs4 import BeautifulSoup
 
 # Import diagram generator
 from diagram_generator import DiagramGenerator
@@ -156,25 +156,64 @@ async def get_youtube_transcript(video_id: str) -> List[dict]:
         raise HTTPException(status_code=404, detail=f"No transcript found for video {video_id}")
     except TranscriptsDisabled:
         raise HTTPException(status_code=403, detail=f"Transcripts are disabled for video {video_id}")
-    except YouTubeTranscriptApiError as e:
-        raise HTTPException(status_code=500, detail=f"YouTube API error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to extract transcript: {str(e)}")
 
 
 async def get_playlist_videos(playlist_id: str) -> List[str]:
-    """Get all video IDs from a YouTube playlist."""
-    # This is a simplified version - in production, use YouTube Data API
-    # For now, we'll use a workaround with the transcript API
+    """Get all video IDs from a YouTube playlist by scraping."""
     video_ids = []
     
-    # Note: This requires YouTube Data API key for proper implementation
-    # For demo purposes, we'll return a placeholder
-    logger.warning("Playlist extraction requires YouTube Data API key")
-    logger.warning("For full playlist support, set YOUTUBE_API_KEY environment variable")
+    try:
+        # Try to scrape playlist page
+        playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                playlist_url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                }
+            )
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Look for video links in playlist
+                # YouTube uses various selectors, try multiple approaches
+                video_links = soup.find_all('a', href=re.compile(r'/watch\?v='))
+                
+                for link in video_links:
+                    href = link.get('href', '')
+                    match = re.search(r'v=([a-zA-Z0-9_-]+)', href)
+                    if match:
+                        video_id = match.group(1)
+                        if video_id not in video_ids:
+                            video_ids.append(video_id)
+                
+                # If scraping didn't work, try to find video IDs in script tags
+                if not video_ids:
+                    scripts = soup.find_all('script')
+                    for script in scripts:
+                        if script.string:
+                            # Look for video IDs in JSON data
+                            ids = re.findall(r'[a-zA-Z0-9_-]{11}', script.string)
+                            for vid_id in ids:
+                                # Basic validation - YouTube video IDs are 11 chars
+                                if len(vid_id) == 11 and vid_id not in video_ids:
+                                    # Skip common non-video IDs
+                                    if vid_id not in ['list', 'watch', 'feature', 'related']:
+                                        video_ids.append(vid_id)
+                                        if len(video_ids) >= 50:  # Limit to prevent false positives
+                                            break
+                
+                logger.info(f"Found {len(video_ids)} videos in playlist via scraping")
+                
+    except Exception as e:
+        logger.error(f"Failed to scrape playlist: {str(e)}")
+        # Fallback: return empty list
+        video_ids = []
     
-    # TODO: Implement proper playlist extraction with YouTube Data API
-    # For now, return empty list
     return video_ids
 
 

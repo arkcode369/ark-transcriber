@@ -26,7 +26,7 @@ class PDFProcessor:
         
         # Check if tesseract is installed
         try:
-            pytesseract.get_tesseract_binary()
+            pytesseract.get_tesseract_version()
             self.ocr_available = True
             logger.info("Tesseract OCR is available")
         except pytesseract.TesseractNotFoundError:
