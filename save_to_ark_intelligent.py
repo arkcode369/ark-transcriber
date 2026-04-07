@@ -130,26 +130,26 @@ def save_youtube_playlist(
         f.write(combined_content)
     
     # Save full transcript
-    transcript_content = f"""# {title} - Full Combined Transcript
-
-**Source:** YouTube Playlist - {playlist_id}  
-**Created:** {now.strftime('%Y-%m-%d %H:%M UTC')}  
-**Language:** {language}
-
----
-
-## All Videos Transcript
-
-{chr(10).join([f"\n\n=== Video {i+1}: {v.get('video_id')} ===\n{v.get('full_text', '')}" for i, v in enumerate(videos)])}
-
----
-
-## Metadata
-- **Source URL:** {source_url}
-- **Processed At:** {now.isoformat()}Z
-- **Total Videos:** {len(videos)}
-- **Total Duration:** {total_duration} seconds
-"""
+    transcript_lines = []
+    transcript_lines.append(f"# {title} - Full Combined Transcript\n")
+    transcript_lines.append(f"**Source:** YouTube Playlist - {playlist_id}  \n")
+    transcript_lines.append(f"**Created:** {now.strftime('%Y-%m-%d %H:%M UTC')}  \n")
+    transcript_lines.append(f"**Language:** {language}\n")
+    transcript_lines.append("\n---\n")
+    transcript_lines.append("## All Videos Transcript\n")
+    
+    for i, v in enumerate(videos):
+        transcript_lines.append(f"\n\n=== Video {i+1}: {v.get('video_id')} ===")
+        transcript_lines.append(v.get('full_text', ''))
+    
+    transcript_lines.append("\n---\n")
+    transcript_lines.append("## Metadata\n")
+    transcript_lines.append(f"- **Source URL:** {source_url}\n")
+    transcript_lines.append(f"- **Processed At:** {now.isoformat()}Z\n")
+    transcript_lines.append(f"- **Total Videos:** {len(videos)}\n")
+    transcript_lines.append(f"- **Total Duration:** {total_duration} seconds\n")
+    
+    transcript_content = "\n".join(transcript_lines)
     
     with open(playlist_dir / "transcript.md", "w", encoding="utf-8") as f:
         f.write(transcript_content)
