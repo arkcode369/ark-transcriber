@@ -67,6 +67,8 @@ class PDFProcessor:
         except Exception as e:
             logger.error(f"PDF analysis failed: {str(e)}")
             raise
+        
+        return result
     
     def extract_text_from_pdf(self, pdf_path: str) -> Tuple[str, List[Dict[str, Any]]]:
         """Extract text from PDF pages"""

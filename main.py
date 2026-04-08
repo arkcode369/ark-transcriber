@@ -868,9 +868,9 @@ async def process_pdf(request: PDFRequest):
 @app.post("/process-pdf-upload")
 async def process_pdf_upload(
     file: UploadFile = File(...),
-    generate_summary: bool = True,
+    gen_summary: bool = True,
     summary_language: str = "id",
-    generate_diagrams: bool = True,
+    gen_diagrams: bool = True,
     use_ocr: bool = True
 ):
     """
@@ -901,13 +901,13 @@ async def process_pdf_upload(
         
         # Generate summary
         summary = None
-        if generate_summary and pdf_result["full_text"]:
+        if gen_summary and pdf_result["full_text"]:
             logger.info("Generating summary...")
             summary = await generate_summary(pdf_result["full_text"], summary_language)
         
         # Generate diagrams
         diagrams = None
-        if generate_diagrams and pdf_result["full_text"]:
+        if gen_diagrams and pdf_result["full_text"]:
             try:
                 logger.info("Generating diagrams...")
                 diagram_result = await diagram_generator.generate_all_diagrams(
